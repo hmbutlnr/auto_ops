@@ -1,0 +1,20 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: auto-ops
+
+# 阿里千问配置
+dashscope:
+  api-key: sk-8528f73a6e044d0e951808efaa34fe3a
+  base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
+  model: qwen-plus-latest
+
+# SSH服务器配置
+ssh:
+  host: ${SSH_HOST:localhost}
+  port: ${SSH_PORT:22}
+  username: ${SSH_USERNAME:root}
+  password: ${SSH_PASSWORD:password}
+  timeout: 30000
