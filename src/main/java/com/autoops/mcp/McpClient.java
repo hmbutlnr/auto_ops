@@ -46,12 +46,16 @@ public class McpClient {
      */
     public List<Map<String, Object>> listTools() {
         try {
+            log.info("正在从 MCP Server 获取工具列表...");
             ResponseEntity<Map> response = restTemplate.getForEntity(
                 mcpServerUrl + "/tools", 
                 Map.class
             );
             Map<String, Object> body = response.getBody();
+            log.info("MCP Server 返回: {}", body);
             if (body != null && body.containsKey("tools")) {
+                Object toolsObj = body.get("tools");
+                log.info("tools 字段类型: {}, 值: {}", toolsObj != null ? toolsObj.getClass() : "null", toolsObj);
                 return (List<Map<String, Object>>) body.get("tools");
             }
         } catch (Exception e) {
@@ -64,11 +68,21 @@ public class McpClient {
      * 调用工具
      */
     public String callTool(String toolName, Map<String, Object> arguments) {
+        return callTool(toolName, arguments, null);
+    }
+
+    /**
+     * 调用工具（带会话ID）
+     */
+    public String callTool(String toolName, Map<String, Object> arguments, String sessionId) {
         try {
+            log.info("McpClient.callTool - toolName: {}, arguments: {}, sessionId: {}", toolName, arguments, sessionId);
+            
             // 构建请求
             ToolCallRequest request = new ToolCallRequest();
             request.setName(toolName);
             request.setArguments(arguments);
+            request.setSessionId(sessionId);
             
             // 设置请求头
             HttpHeaders headers = new HttpHeaders();
@@ -82,6 +96,8 @@ public class McpClient {
                 entity,
                 Map.class
             );
+            
+            log.info("McpClient.callTool 响应: {}", response.getBody());
             
             Map<String, Object> result = response.getBody();
             if (result != null) {
@@ -124,5 +140,6 @@ public class McpClient {
     public static class ToolCallRequest {
         private String name;
         private Map<String, Object> arguments;
+        private String sessionId;
     }
 }

@@ -1,6 +1,9 @@
 com\autoops\mcp\McpClient$ToolCallRequest.class
 com\autoops\chat\service\ChatService.class
 com\autoops\chat\dto\ChatResponse.class
+com\autoops\host\controller\HostController.class
+com\autoops\host\model\Host.class
+com\autoops\config\WebConfig.class
 com\autoops\chat\service\ChatServiceWithFunctionCalling.class
 com\autoops\mcp\McpClient.class
 com\autoops\chat\model\ChatMessage.class
@@ -9,6 +12,7 @@ com\autoops\chat\config\DashScopeConfig.class
 com\autoops\mcp\McpServerController.class
 com\autoops\chat\dto\ChatRequest.class
 com\autoops\chat\model\ChatSession.class
+com\autoops\host\repository\HostRepository.class
 com\autoops\config\SshProperties.class
 com\autoops\service\SshService.class
 com\autoops\chat\controller\PageController.class

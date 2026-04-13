@@ -1,9 +1,19 @@
 server:
   port: 8080
+  servlet:
+    encoding:
+      charset: UTF-8
+      enabled: true
+      force: true
 
 spring:
   application:
     name: auto-ops
+  http:
+    encoding:
+      charset: UTF-8
+      enabled: true
+      force: true
 
 # 阿里千问配置
 dashscope:

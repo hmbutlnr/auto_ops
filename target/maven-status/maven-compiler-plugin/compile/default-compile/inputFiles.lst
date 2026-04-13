@@ -9,6 +9,10 @@ D:\IDEAWorkSpace2\auto_ops\src\main\java\com\autoops\AutoOpsApplication.java
 D:\IDEAWorkSpace2\auto_ops\src\main\java\com\autoops\chat\service\ChatServiceWithFunctionCalling.java
 D:\IDEAWorkSpace2\auto_ops\src\main\java\com\autoops\chat\controller\ChatController.java
 D:\IDEAWorkSpace2\auto_ops\src\main\java\com\autoops\chat\dto\ChatResponse.java
+D:\IDEAWorkSpace2\auto_ops\src\main\java\com\autoops\config\WebConfig.java
+D:\IDEAWorkSpace2\auto_ops\src\main\java\com\autoops\host\model\Host.java
+D:\IDEAWorkSpace2\auto_ops\src\main\java\com\autoops\host\repository\HostRepository.java
 D:\IDEAWorkSpace2\auto_ops\src\main\java\com\autoops\chat\service\ChatService.java
 D:\IDEAWorkSpace2\auto_ops\src\main\java\com\autoops\chat\config\DashScopeConfig.java
+D:\IDEAWorkSpace2\auto_ops\src\main\java\com\autoops\host\controller\HostController.java
 D:\IDEAWorkSpace2\auto_ops\src\main\java\com\autoops\chat\dto\ChatRequest.java
