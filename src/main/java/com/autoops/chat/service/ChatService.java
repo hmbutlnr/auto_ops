@@ -123,7 +123,8 @@ public class ChatService {
                 Map<String, Object> arguments = (Map<String, Object>) toolCall.get("arguments");
                 
                 // 调用 MCP 工具
-                String executionResult = mcpClient.callTool(toolName, arguments);
+                McpClient.ToolCallResult toolResult = mcpClient.callTool(toolName, arguments);
+                String executionResult = toolResult.getContent();
                 
                 // 将工具调用和结果添加到响应中
                 matcher.appendReplacement(result, 

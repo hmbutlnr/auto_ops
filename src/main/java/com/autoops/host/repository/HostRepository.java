@@ -26,6 +26,16 @@ public class HostRepository {
         host.setStatus("UNKNOWN");
         host.setId(idGenerator.getAndIncrement());
         hostStore.put(host.getId(), host);
+
+        Host host2 = new Host();
+        host2.setName("172.19.63.50");
+        host2.setHostname("172.19.63.50");
+        host2.setPort(22);
+        host2.setUsername("lifh");
+        host2.setPassword("19981028");
+        host2.setStatus("UNKNOWN");
+        host2.setId(idGenerator.getAndIncrement());
+        hostStore.put(host2.getId(), host2);
     }
 
     public Host save(Host host) {

@@ -75,91 +75,137 @@ public class ChatServiceWithFunctionCalling {
     }
 
 /**
-     * 处理聊天请求，支持 Function Calling
-     * @return 返回结果，包含 "__HOST_SELECTION_DIALOG:" 前缀表示需要前端弹出选择主机
-*/
-    public String chat(String sessionId, String userMessage, Host preSelectedHost) {
-        ChatSession session = sessions.computeIfAbsent(sessionId, ChatSession::new);
-        session.addUserMessage(userMessage);
+ * 处理聊天请求，智能体模式：AI可以多轮对话并多次调用工具
+ * @return 返回结果，包含 "__HOST_SELECTION_DIALOG:" 前缀表示需要前端弹出选择主机
+ */
+public String chat(String sessionId, String userMessage, Host preSelectedHost) {
+    ChatSession session = sessions.computeIfAbsent(sessionId, ChatSession::new);
+    session.addUserMessage(userMessage);
 
-        try {
-            Host host = session.getSelectedHost();
-            if (host == null && preSelectedHost != null) {
-                host = preSelectedHost;
-                session.setSelectedHost(host);
-            }
-            
-            if (host == null) {
-                String ipFromMessage = extractIpFromMessage(userMessage);
-                if (ipFromMessage != null) {
-                    host = findHostByIp(ipFromMessage);
-                    if (host != null) {
-                        session.setSelectedHost(host);
-                        log.debug("从用户消息中识别并自动选择主机: {} ({})", host.getName(), host.getHostname());
-                    }
-                }
-            }
-            
-            boolean hasMoreToolCalls = true;
-            String lastReply = null;
-            int maxIterations = 10;
-            int iteration = 0;
-            
-            while (hasMoreToolCalls && iteration < maxIterations) {
-                iteration++;
-                log.debug("AI 循环第 {} 次", iteration);
-                
-                List<Map<String, Object>> messages = buildMessages(session);
-                
-                if (host != null) {
-                    Map<String, Object> systemPrompt = new HashMap<>();
-                    systemPrompt.put("role", "system");
-                    systemPrompt.put("content", String.format(
-                        "用户已选择主机：%s (IP: %s, 端口: %d, 用户名: %s, 密码: %s)。" +
-                        "进行SSH操作时使用此主机的连接信息。",
-                        host.getName(), host.getHostname(), host.getPort(), host.getUsername(), host.getPassword()
-                    ));
-                    messages.add(0, systemPrompt);
-                } else {
-                    String hostListInfo = getHostListInfo();
-                    Map<String, Object> systemPrompt = new HashMap<>();
-                    systemPrompt.put("role", "system");
-                    systemPrompt.put("content", "可用主机列表，作为参考信息：\n" + hostListInfo);
-                    messages.add(0, systemPrompt);
-                }
-                
-                Map<String, Object> tools = buildToolsDefinitionFromMcp();
-                Map<String, Object> response = callDashScopeWithTools(messages, tools);
-                
-                List<Map<String, Object>> toolCalls = extractToolCalls(response);
-                
-                if (toolCalls != null && !toolCalls.isEmpty()) {
-                    log.debug("检测到 {} 个工具调用", toolCalls.size());
-                    
-                    for (Map<String, Object> toolCall : toolCalls) {
-                        String result = executeToolCallViaMcp(sessionId, toolCall, host);
-                        session.addAssistantMessage("【工具】" + getToolName(toolCall) + " → " + result);
-                    }
-                    hasMoreToolCalls = true;
-                } else {
-                    hasMoreToolCalls = false;
-                    lastReply = extractContent(response);
-                    session.addAssistantMessage(lastReply);
-                }
-            }
-            
-            if (iteration >= maxIterations) {
-                log.warn("达到最大循环次数，停止等待工具调用");
-                return lastReply;
-            }
-            
-            return lastReply;
-            
-        } catch (Exception e) {
-            log.error("聊天处理失败: {}", e.getMessage(), e);
-            return "处理失败: " + e.getMessage();
+    try {
+        Host host = session.getSelectedHost();
+        if (host == null && preSelectedHost != null) {
+            host = preSelectedHost;
+            session.setSelectedHost(host);
         }
+        
+        // // 尝试从消息中提取IP自动识别主机
+        // if (host == null) {
+        //     String ipFromMessage = extractIpFromMessage(userMessage);
+        //     if (ipFromMessage != null) {
+        //         host = findHostByIp(ipFromMessage);
+        //         if (host != null) {
+        //             session.setSelectedHost(host);
+        //             log.info("从用户消息中识别并自动选择主机: {} ({})", host.getName(), host.getHostname());
+        //         }
+        //     }
+        // }
+        
+        // 构建动态 system prompt
+        List<Map<String, Object>> messages = buildMessages(session);
+        addSystemPrompt(messages, host);
+        
+        // 获取 MCP 工具定义
+        Map<String, Object> tools = buildToolsDefinitionFromMcp();
+        
+        // AI 多轮对话循环
+        int maxIterations = 10;
+        int iteration = 0;
+        String finalReply = null;
+        
+        while (iteration < maxIterations) {
+            iteration++;
+            log.info("AI 对话轮次: {}, 已调用工具次数: {}", iteration, iteration - 1);
+            
+            // 调用 AI
+            ResponseEntity<Map> response = callDashScopeWithTools(messages, tools);
+            Map<String, Object> responseBody = response.getBody();
+            
+            // 检查 AI 是否调用了工具
+            List<Map<String, Object>> toolCalls = extractToolCalls(responseBody);
+            
+            if (toolCalls == null || toolCalls.isEmpty()) {
+                // AI 没有调用工具，返回最终回复
+                finalReply = extractContent(responseBody);
+                session.addAssistantMessage(finalReply);
+                log.info("AI 最终回复: {}", finalReply);
+                break;
+            }
+            
+            // AI 调用了一个或多个工具
+            log.info("AI 调用了 {} 个工具", toolCalls.size());
+            
+            for (Map<String, Object> toolCall : toolCalls) {
+                String toolName = getToolName(toolCall);
+                log.info("执行工具: {}", toolName);
+                
+                // 执行工具获取结果
+                String toolResult = executeToolCallViaMcp(sessionId, toolCall, host);
+                
+                // 记录工具调用结果
+                String toolResultMsg = "【工具调用】" + toolName + "\n结果: " + toolResult;
+                session.addAssistantMessage(toolResultMsg);
+                
+                // 添加工具结果到消息��史，供下一轮 AI 参考
+                Map<String, Object> toolMessage = new HashMap<>();
+                toolMessage.put("role", "tool");
+                toolMessage.put("content", toolResult);
+                messages.add(toolMessage);
+                
+                log.info("工具执行完成，返回结果给 AI 进行下一轮分析");
+            }
+            
+            // 如果 AI 调用了 select_host 工具，弹窗让用户选择，不需要继续循环
+            boolean needHostSelection = toolCalls.stream()
+                .anyMatch(tc -> "select_host".equals(getToolName(tc)));;
+            
+            if (needHostSelection) {
+                finalReply = "__HOST_SELECTION_DIALOG:|请在下方选择要操作的主机";
+                break;
+            }
+        }
+        
+        if (iteration >= maxIterations) {
+            log.warn("达到最大对话轮次限制");   
+            return "对话已达到最大轮次限制，请重新开始。";
+        }
+        
+        return finalReply;
+        
+    } catch (Exception e) {
+        log.error("聊天处理失败: {}", e.getMessage(), e);
+        return "处理失败: " + e.getMessage();
     }
+}
+
+/**
+ * 添加动态 system prompt
+ */
+private void addSystemPrompt(List<Map<String, Object>> messages, Host host) {
+    Map<String, Object> systemPrompt = new HashMap<>();
+    systemPrompt.put("role", "system");
+    
+    StringBuilder content = new StringBuilder();
+    content.append("你是一个智能运维助手，可以帮助用户管理服务器。\n");
+    
+    if (host != null) {
+        content.append(String.format("当前已选择主机: %s (IP: %s, 端口: %d, 用户名: %s)\n",
+            host.getName(), host.getHostname(), host.getPort(), host.getUsername()));
+        content.append("可以使用 ssh_execute_command 工具在此主机上执行命令。\n");
+    } else {
+        content.append("可用的 MCP 工具:\n");
+        content.append("- list_hosts: 查看所有主机列表\n");
+        content.append("- select_host: 选择要操作的主机（需要用户交互选择）\n");
+        content.append("- get_host_by_ip: 根据 IP 查询主机信息\n");
+        content.append("- get_host_by_name: 根据名称查询主机信息\n");
+        content.append("- ssh_execute_command: 在主机上执行 SSH 命令\n");
+    }
+    
+    content.append("\n注意: 如果需要操作主机但没有选择主机，请先调用 select_host 工具。\n");
+    
+    systemPrompt.put("content", content.toString());
+    messages.add(0, systemPrompt);
+}
     
     /**
      * 获取主机列表信息（用于传给AI作为参考）
@@ -354,7 +400,7 @@ public class ChatServiceWithFunctionCalling {
     /**
      * 调用 DashScope API（带工具定义）
      */
-    private Map<String, Object> callDashScopeWithTools(List<Map<String, Object>> messages, 
+    private ResponseEntity<Map> callDashScopeWithTools(List<Map<String, Object>> messages, 
                                                         Map<String, Object> tools) {
         try {
             Map<String, Object> requestBody = new HashMap<>();
@@ -371,7 +417,7 @@ public class ChatServiceWithFunctionCalling {
             String url = config.getBaseUrl() + "/chat/completions";
             ResponseEntity<Map> response = restTemplate.postForEntity(url, entity, Map.class);
             
-            return response.getBody();
+            return response;
             
         } catch (Exception e) {
             log.error("调用 DashScope API 失败: {}", e.getMessage(), e);
@@ -419,7 +465,7 @@ public class ChatServiceWithFunctionCalling {
             String functionName = (String) function.get("name");
             String argumentsStr = (String) function.get("arguments");
 
-            log.info("执行工具: {}, 参数: {}", functionName, argumentsStr);
+            log.info("执行工具: {}, 参数: {}, sessionId: {}, selectedHost: {}", functionName, argumentsStr, sessionId, selectedHost != null ? selectedHost.getName() : "null");
 
             // 解析参数
             Map<String, Object> arguments = objectMapper.readValue(argumentsStr, Map.class);
@@ -431,7 +477,18 @@ public class ChatServiceWithFunctionCalling {
             }
 
             // 通过 MCP 客户端调用工具，传入 sessionId
-            return mcpClient.callTool(functionName, arguments, sessionId);
+            McpClient.ToolCallResult result = mcpClient.callTool(functionName, arguments, sessionId);
+            
+            log.info("工具执行结果: isNeedHostSelection={}, content={}", result.isNeedHostSelection(), result.getContent());
+            
+            // 检查是否需要弹出主机选择对话框
+            if (result.isNeedHostSelection()) {
+                // 返回特殊标记让前端知道需要选择主机
+                log.info("需要弹出主机选择对话框, functionName={}", functionName);
+                return "__HOST_SELECTION_DIALOG:|请先选择要操作的主机，然后告诉我您想执行什么命令。";
+            }
+            
+            return result.getContent();
 
         } catch (Exception e) {
             log.error("执行工具失败: {}", e.getMessage(), e);

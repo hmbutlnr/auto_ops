@@ -19,7 +19,6 @@ public class ChatController {
 
     private final ChatServiceWithFunctionCalling chatService;
     private final HostRepository hostRepository;
-    private final Map<String, Long> sessionSelectedHosts = new java.util.concurrent.ConcurrentHashMap<>();
 
     public ChatController(ChatServiceWithFunctionCalling chatService, HostRepository hostRepository) {
         this.chatService = chatService;
@@ -36,51 +35,21 @@ public class ChatController {
             }
             
             String message = request.getMessage();
+            String reply = chatService.chat(sessionId, message, null);
             
-            // 检查是否是主机选择结果
-            boolean isHostSelectionResult = message != null && 
-                (message.contains("主机 IP:") || message.contains("选择的主机 IP:"));
+            // 检查是否需要弹出主机选择对话框（通过检查特殊标记）
+            boolean needsHostSelection = reply != null && reply.contains("__HOST_SELECTION_DIALOG:");
             
-            if (isHostSelectionResult) {
-                // 提取主机IP，查询主机信息
-                String hostIp = message.replace("用户选择的主机 IP:", "").trim();
-                Host host = hostRepository.findAll().stream()
-                    .filter(h -> h.getHostname().equals(hostIp))
-                    .findFirst()
-                    .orElse(null);
-                
-                // 主机选择后继续处理
-                String reply = chatService.continueAfterHostSelection(sessionId, message, host);
-                
-                // 保存主机选择到 Controller 的 sessionSelectedHosts
-                if (host != null) {
-                    sessionSelectedHosts.put(sessionId, host.getId());
-                }
-                
-                return new ChatResponse(sessionId, reply, true, null, false, null, host);
-            }
-            
-            // 检查是否有提前选择的主机
-            Long preSelectedHostId = sessionSelectedHosts.get(sessionId);
-            Host preSelectedHost = null;
-            if (preSelectedHostId != null) {
-                preSelectedHost = hostRepository.findById(preSelectedHostId);
-            }
-            
-            // 传递已选主机给 chat 服务
-            String reply = chatService.chat(sessionId, message, preSelectedHost);
-            
-            boolean needsHostSelection = false;
-            
-            if (reply != null && (reply.startsWith("__SELECTED_HOST:") || reply.startsWith("__HOST_SELECTION_DIALOG:"))) {
+            if (needsHostSelection) {
                 int pipeIndex = reply.indexOf("|");
                 if (pipeIndex > 0) {
-                    needsHostSelection = true;
                     reply = reply.substring(pipeIndex + 1);
                 }
             }
             
-            return new ChatResponse(sessionId, reply, true, null, needsHostSelection, null, null);
+            // 获取当前会话选中的主机
+            Host selectedHost = chatService.getSelectedHost(sessionId);
+            return new ChatResponse(sessionId, reply, true, null, needsHostSelection, null, selectedHost);
         } catch (Exception e) {
             return new ChatResponse(null, null, false, e.getMessage(), false, null, null);
         }
@@ -101,16 +70,10 @@ public class ChatController {
     @GetMapping("/session/{sessionId}/selected-host")
     public Map<String, Object> getSelectedHost(@PathVariable String sessionId) {
         Map<String, Object> response = new HashMap<>();
-        Long hostId = sessionSelectedHosts.get(sessionId);
-        if (hostId != null) {
-            Host host = hostRepository.findById(hostId);
-            if (host != null) {
-                response.put("success", true);
-                response.put("host", host);
-            } else {
-                response.put("success", false);
-                response.put("error", "主机不存在");
-            }
+        Host host = chatService.getSelectedHost(sessionId);
+        if (host != null) {
+            response.put("success", true);
+            response.put("host", host);
         } else {
             response.put("success", true);
             response.put("host", null);
@@ -121,7 +84,6 @@ public class ChatController {
     @DeleteMapping("/session/{sessionId}/selected-host")
     public Map<String, Object> clearSelectedHost(@PathVariable String sessionId) {
         Map<String, Object> response = new HashMap<>();
-        sessionSelectedHosts.remove(sessionId);
         chatService.clearSelectedHost(sessionId);
         response.put("success", true);
         response.put("message", "已清除选中主机");
@@ -145,7 +107,6 @@ public class ChatController {
                 response.put("error", "主机不存在");
                 return response;
             }
-            sessionSelectedHosts.put(sessionId, hostId);
             chatService.setSelectedHost(sessionId, host);
             response.put("success", true);
             response.put("host", host);

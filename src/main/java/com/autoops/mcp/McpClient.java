@@ -67,14 +67,14 @@ public class McpClient {
     /**
      * 调用工具
      */
-    public String callTool(String toolName, Map<String, Object> arguments) {
+    public ToolCallResult callTool(String toolName, Map<String, Object> arguments) {
         return callTool(toolName, arguments, null);
     }
 
     /**
      * 调用工具（带会话ID）
      */
-    public String callTool(String toolName, Map<String, Object> arguments, String sessionId) {
+    public ToolCallResult callTool(String toolName, Map<String, Object> arguments, String sessionId) {
         try {
             log.info("McpClient.callTool - toolName: {}, arguments: {}, sessionId: {}", toolName, arguments, sessionId);
             
@@ -100,22 +100,49 @@ public class McpClient {
             log.info("McpClient.callTool 响应: {}", response.getBody());
             
             Map<String, Object> result = response.getBody();
+            ToolCallResult toolResult = new ToolCallResult();
+            
             if (result != null) {
+                Object contentObj = result.get("content");
+                String content = contentObj instanceof List ? contentObj.toString() : (String) contentObj;
+                
                 Boolean isError = (Boolean) result.get("isError");
+                Boolean needHostSelection = (Boolean) result.get("needHostSelection");
+                Boolean showHostSelector = (Boolean) result.get("showHostSelector");
+                
+                // 检查 content 中是否包含特殊标记
+                boolean hasDialogMarker = content != null && content.toString().contains("__SELECT_HOST_DIALOG__");
+                
+                log.info("MCP返回: isError={}, needHostSelection={}, showHostSelector={}, content={}", 
+                    isError, needHostSelection, showHostSelector, content);
+                
+                toolResult.setNeedHostSelection(
+                    Boolean.TRUE.equals(needHostSelection) || 
+                    Boolean.TRUE.equals(showHostSelector) || 
+                    hasDialogMarker
+                );
+                toolResult.setError(Boolean.TRUE.equals(isError));
+                
                 if (Boolean.TRUE.equals(isError)) {
                     log.warn("工具执行出错: {}", result.get("content"));
-                    return extractTextFromContent(result.get("content"));
+                    toolResult.setContent(extractTextFromContent(result.get("content")));
+                    return toolResult;
                 }
                 
                 // 提取文本内容
-                return extractTextFromContent(result.get("content"));
+                toolResult.setContent(extractTextFromContent(result.get("content")));
+            } else {
+                toolResult.setContent("工具调用无返回结果");
             }
             
-            return "工具调用无返回结果";
+            return toolResult;
             
         } catch (Exception e) {
             log.error("调用工具失败: {}", e.getMessage(), e);
-            return "工具调用失败: " + e.getMessage();
+            ToolCallResult toolResult = new ToolCallResult();
+            toolResult.setError(true);
+            toolResult.setContent("工具调用失败: " + e.getMessage());
+            return toolResult;
         }
     }
 
@@ -141,5 +168,12 @@ public class McpClient {
         private String name;
         private Map<String, Object> arguments;
         private String sessionId;
+    }
+    
+    @Data
+    public static class ToolCallResult {
+        private String content;
+        private boolean error;
+        private boolean needHostSelection;
     }
 }

@@ -293,11 +293,8 @@ const sendMessage = async () => {
         await loadHosts()
       } else {
         messages.value.push({ role: 'assistant', content: response.message })
-        // 更新当前主机（可能是从消息中自动检测到的）
-        if (response.selectedHost) {
-          selectedHost.value = response.selectedHost
-        }
-        await loadSelectedHost()
+        // 直接使用响应中返回的主机信息
+        selectedHost.value = response.selectedHost || null
       }
     } else {
       messages.value.push({ role: 'assistant', content: '错误: ' + response.error })
